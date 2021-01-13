@@ -37,10 +37,6 @@ private:
 
     void skip_space();
 
-    static std::tuple<unsigned char *, unsigned int> url_decode(unsigned char *buffer, unsigned int size);
-
-    static bool url_check(unsigned char *buffer, unsigned int size);
-
     void return_resp(Response *resp);
 
     ~HttpParser() {

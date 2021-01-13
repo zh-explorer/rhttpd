@@ -28,7 +28,7 @@ HttpParser::HttpParser(AIO *io) {
 
 
 Response *HttpParser::parse() {
-    auto *req = new Request();
+    auto *req = new Request(this->io);
 
     // parse method
     unsigned char *end_line;
@@ -40,7 +40,7 @@ Response *HttpParser::parse() {
 
 
     int space_idx;
-    space_idx = parseHelper::find_space(reinterpret_cast<const char *>(this->line_start), end_line - this->line_start);
+    space_idx = parseHelper::find_space(this->line_start, end_line - this->line_start);
     if (space_idx == -1) {
         delete req;
         return new Response(400);
@@ -56,15 +56,40 @@ Response *HttpParser::parse() {
     this->skip_space();
 
     // parse url
-    space_idx = parseHelper::find_space(reinterpret_cast<const char *>(this->line_start), end_line - this->line_start);
+    space_idx = parseHelper::find_space(this->line_start, end_line - this->line_start);
     if (space_idx == -1) {
         delete req;
         return new Response(400);
     }
     unsigned char *url;
     unsigned int url_size;
-    std::tie(url, url_size) = this->url_decode(this->line_start, space_idx);
-    if (!this->url_check(url, url_size)) {
+    std::tie(url, url_size) = parseHelper::url_decode(this->line_start, space_idx);
+
+    // parse get req
+    int ch_idx = parseHelper::find_ch(url, url_size, '?');
+    if (ch_idx != -1) {
+        unsigned char *p = url + ch_idx + 1;
+        unsigned int remain = url_size - ch_idx - 1;
+        while (true) {
+            int split_idx = parseHelper::find_ch(p, remain, '&');
+            if (split_idx == -1) {
+                int equ_idx = parseHelper::find_ch(p, remain, '=');
+                if (equ_idx != -1) {
+                    req->add_get_param(p, equ_idx, p + equ_idx + 1, remain - equ_idx - 1);
+                }
+                break;
+            }
+            int equ_idx = parseHelper::find_ch(p, split_idx, '=');
+            if (equ_idx != -1) {
+                req->add_get_param(p, equ_idx, p + equ_idx + 1, split_idx - equ_idx - 1);
+            }
+            p += split_idx + 1;
+            remain -= split_idx + 1;
+        }
+        url_size = ch_idx;
+    }
+
+    if (!parseHelper::url_check(url, url_size)) {
         delete req;
         return new Response(403);
     }
@@ -98,27 +123,24 @@ Response *HttpParser::parse() {
         if (end_line == this->line_start) {
             break;
         }
-        int semicolon_idx = parseHelper::find_ch(reinterpret_cast<const char *>(this->line_start),
+        int semicolon_idx = parseHelper::find_ch(this->line_start,
                                                  end_line - this->line_start, ':');
         if (semicolon_idx == -1 || semicolon_idx == 0) {
             continue;       // skip this error header;
         }
 
         unsigned int key_size = semicolon_idx;
-        auto *key = static_cast<unsigned char *>(malloc(key_size + 1));
-        memcpy(key, this->line_start, key_size);
-        key[key_size] = 0;
+        unsigned char *key = this->line_start;
         this->update_idx(semicolon_idx + 1);
         this->skip_space();
 
         unsigned int value_size = end_line - this->line_start;
-        auto *value = static_cast<unsigned char *>(malloc(value_size + 1));
-        memcpy(value, this->line_start, value_size);
-        value[value_size] = 0;
+        unsigned char *value = this->line_start;
         req->add_header(key, key_size, value, value_size);
 
         this->line_start = end_line + 2;
     }
+    req->set_remain({this->line_start + 2, static_cast<unsigned int>(this->line_end - this->line_start - 2)});
     // the http request header parse finish
     auto resp = globalContext::p->process(req);
     delete req;
@@ -169,72 +191,6 @@ void HttpParser::skip_space() {
         this->line_start++;
     }
 }
-
-bool HttpParser::url_check(unsigned char *buffer, unsigned int size) {
-    if (buffer == nullptr || size == 0) {
-        return false;
-    }
-    for (unsigned int i = 0; i < size - 1; i++) {
-        if (buffer[i] == '.' && buffer[i + 1] == '.') {
-            return false;
-        }
-    }
-    return true;
-}
-
-std::tuple<unsigned char *, unsigned int> HttpParser::url_decode(unsigned char *buffer, unsigned int size) {
-    auto *url = static_cast<unsigned char *>(malloc(size));
-    unsigned int i = 0;
-    unsigned int j = 0;
-    while (i < size) {
-        if (buffer[i] != '%') {
-            if (buffer[i] >= 'A' && buffer[i] <= 'Z') {
-                url[j] = buffer[i] + 32;
-            } else {
-                url[j] = buffer[i];
-            }
-            j++;
-            i++;
-        } else {
-            if (i + 2 >= size) {
-                // error, no enough char
-                free(url);
-                return {nullptr, 0};
-            }
-
-            // TODO: wtf
-            unsigned char c;
-            if (buffer[i + 1] >= '0' && buffer[i + 1] <= '9') {
-                c = (buffer[i + 1] - '0') * 16;
-            } else if (buffer[i + 1] >= 'a' && buffer[i + 1] <= 'z') {
-                c = (buffer[i + 1] - 'a' + 10) * 16;
-            } else if (buffer[i + 1] >= 'A' && buffer[i + 1] <= 'Z') {
-                c = (buffer[i + 1] - 'A' + 10) * 16;
-            } else {
-                free(url);
-                return {nullptr, 0};
-            }
-
-            if (buffer[i + 2] >= '0' && buffer[i + 2] <= '9') {
-                c += (buffer[i + 2] - '0');
-            } else if (buffer[i + 2] >= 'a' && buffer[i + 2] <= 'z') {
-                c += (buffer[i + 2] - 'a' + 10);
-            } else if (buffer[i + 2] >= 'A' && buffer[i + 2] <= 'Z') {
-                c += (buffer[i + 2] - 'A' + 10);
-            } else {
-                free(url);
-                return {nullptr, 0};
-            }
-
-            url[j] = c;
-            j++;
-            i += 3;
-        }
-    }
-    return {url, j};
-}
-
-
 
 void HttpParser::return_resp(Response *resp) {
 

@@ -18,12 +18,22 @@ public:
 
     Response(int status_code, const char *content) : status_code(status_code) {};
 
-    void set_header(const char *key, const char *value) {
-        header.write((unsigned char *) key, strlen(key));
-        header.write((unsigned char *) ": ", 2);
-        header.write((unsigned char *) value, strlen(value));
-        header.write((unsigned char *) "\r\n", 2);
+    void update_header_buffer() {
+        for (const auto &i : this->header_map) {
+            std::string key = i.first;
+            for (const std::string& value : i.second) {
+                header.write((unsigned char *) key.c_str(), key.size());
+                header.write((unsigned char *) ": ", 2);
+                header.write((unsigned char *) value.c_str(), value.size());
+                header.write((unsigned char *) "\r\n", 2);
+            }
+        }
     }
+
+    void set_header(const char *key, char const *value) {
+        header_map[key].push_back(value);
+    }
+
 
     void set_body(unsigned char *data, unsigned int size) {
         this->body.write(data, size);
@@ -52,6 +62,7 @@ private:
     array_buf header;
     array_buf body;
     int status_code;
+    std::map<std::string, std::vector<std::string>> header_map;
 };
 
 

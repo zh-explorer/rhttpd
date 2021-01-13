@@ -11,6 +11,12 @@
 class httpProcess {
 public:
     Response *process(Request *);
+
+    static void process_static_file(Response *resp, Request *req, FILE *static_file);
+
+    static FILE *get_static_file(const unsigned char *url, unsigned int size);
+
+
 };
 
 

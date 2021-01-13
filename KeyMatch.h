@@ -59,8 +59,9 @@ public:
         };
     }
 
-    void set_value(V value) {
-        this->value = value;
+    void set_value(V &value) {
+//        std::swap(this->value, value);
+        this->value = std::move(value);
         this->content_value = true;
     }
 
@@ -68,7 +69,7 @@ public:
         return this->value;
     }
 
-    void iter(std::function<void(V)> func) {
+    void iter(std::function<void(V &)> func) {
         for (auto p : this->sub_node) {
             p.second->iter(func);
         }

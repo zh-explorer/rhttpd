@@ -29,7 +29,7 @@ void Response::return_resp(AIO *io) {
             io->write(reinterpret_cast<unsigned char *>(tmp_buf), re, -1);
         } else if (re <= 1022) {    // TODO: overwrite 1
             tmp_buf[re] = '\r';
-            tmp_buf[re+1] = '\n';
+            tmp_buf[re + 1] = '\n';
             re += 2;
             io->write(reinterpret_cast<unsigned char *>(tmp_buf), re, -1);
             break;
@@ -53,7 +53,9 @@ void Response::return_resp(AIO *io) {
     } else {
         while (true) {
             re = this->body.read(reinterpret_cast<unsigned char *>(tmp_buf), BLOCK_SIZE);
-            if (re == BLOCK_SIZE) {
+            if (re == 0) {
+                break;
+            } else if (re == BLOCK_SIZE) {
                 io->write(reinterpret_cast<unsigned char *>(tmp_buf), re, -1);
             } else {
                 io->write(reinterpret_cast<unsigned char *>(tmp_buf), re, -1);
